@@ -382,9 +382,6 @@ system-fitness-advisor/
 
 ---
 
-## 关于作者
-
-- **小红书**：[@晓峰Leo](https://xhslink.com/m/7RAAhDPf9Ag)
 
 
 
