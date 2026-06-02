@@ -394,6 +394,3 @@ system-fitness-advisor/
 
 ---
 
-## Author
-
-- **Xiaohongshu**: [@Xiaofeng Leo](https://xhslink.com/m/7RAAhDPf9Ag)
