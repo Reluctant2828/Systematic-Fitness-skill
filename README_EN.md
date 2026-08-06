@@ -361,7 +361,8 @@ system-fitness-advisor/
 │   └── exercise-library-schema.md
 ├── scripts/
 │   ├── summarize_training_logs.py
-│   └── manage_user_data.py
+│   ├── manage_user_data.py
+│   └── validate_user_data.py
 ├── templates/
 │   ├── user-intake.md
 │   └── user-data/

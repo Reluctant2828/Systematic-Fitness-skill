@@ -44,7 +44,7 @@ Do not use a server-side "dry run" as the safety gate unless the endpoint is pro
 
 - Timeout, SSL EOF, connection reset, or a closed client stream does not prove that the write failed. Re-read the affected date range before retrying.
 - If the re-read shows the intended record, stop; do not duplicate it. If it shows a partial write, report the difference and ask before repairing it.
-- Keep per-operation evidence locally without credentials: timestamp, date range, action, response status, record counts, and verification result.
+- Keep per-operation evidence only in a user-approved audit path or the current conversation, without credentials: timestamp, date range, action, response status, record counts, source freshness, and verification result.
 
 ## Output minimum
 

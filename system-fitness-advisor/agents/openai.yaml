@@ -1,4 +1,4 @@
 interface:
   display_name: "System Fitness Advisor"
-  short_description: "Systematic fitness planning with profile, training, body, and nutrition history"
-  default_prompt: "Use /fitness to analyze my profile, completed/planned/skipped workout logs, body metrics, nutrition history, and exercise library, then produce the smallest evidence-based next change across hypertrophy, fat loss, specialization, or powerlifting. Keep data read-only unless I explicitly confirm a write."
+  short_description: "Evidence-based fitness decisions from safe, state-aware training data"
+  default_prompt: "Use $system-fitness-advisor to analyze my profile, completed/planned/skipped/unknown logs, body metrics, nutrition, CSV/JSON files, or Xunji data. Apply the safety gate, name the canonical bottleneck and exercise match, and make the smallest evidence-based next decision. Keep local/API data read-only unless I explicitly confirm a specific write."

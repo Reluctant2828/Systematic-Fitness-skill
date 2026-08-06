@@ -350,7 +350,8 @@ system-fitness-advisor/
 │   └── exercise-library-schema.md
 ├── scripts/
 │   ├── summarize_training_logs.py
-│   └── manage_user_data.py
+│   ├── manage_user_data.py
+│   └── validate_user_data.py
 ├── templates/
 │   ├── user-intake.md
 │   └── user-data/
@@ -381,7 +382,6 @@ system-fitness-advisor/
 - 历史数据需要用户授权保存，建议存放在 Skill 文件夹外部。
 
 ---
-
 
 
 

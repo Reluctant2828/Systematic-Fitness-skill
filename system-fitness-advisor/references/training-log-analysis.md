@@ -15,6 +15,8 @@ Example:
 ```bash
 python scripts/summarize_training_logs.py examples/sample-training-log.csv
 python scripts/summarize_training_logs.py user-log.json --format json
+# Only use this override after verifying that the source is a completed-log export.
+python scripts/summarize_training_logs.py user-log.csv --default-status completed
 ```
 
 Accepted CSV/JSON field aliases include:
@@ -28,7 +30,7 @@ Accepted CSV/JSON field aliases include:
 
 Use the script output as a structured summary, not as the final answer. The coaching conclusion still comes from this reference plus the goal module and `recommendation-decision-tree.md`.
 
-Only completed records should drive volume, frequency, progression, and e1RM trends. The script reports `status_counts` and excludes planned, skipped, and unknown sets from those calculations. If a source omits status, the script marks the completed status as inferred; confirm that the export represents completed work before making a progression decision.
+Only completed records should drive volume, frequency, progression, and e1RM trends. The script reports `status_counts` as set-level counts and `status_record_counts` as source-row counts; both exclude planned, skipped, and unknown sets from completed-work calculations. Exact duplicate source rows are removed and reported before set expansion. A single range such as `8-10` is treated as an uncertain lower-bound value, not two sets. If a source omits status, the script defaults to `unknown` and marks the status as inferred. Use `--default-status completed` only after verifying that the source is a completed-work export.
 
 Exercise names are matched in this order:
 
@@ -168,6 +170,6 @@ When using this reference, include:
 
 - Data range and confidence: exact, partial, screenshot-uncertain, or sparse.
 - Key findings: volume, frequency, intensity, progression, fatigue, exercise selection.
-- The primary bottleneck: under-stimulus, over-fatigue, technique mismatch, adherence, or goal mismatch.
+- The primary bottleneck: one canonical id such as `under_stimulus`, `over_fatigue`, `technique_mismatch`, `recovery`, `adherence`, `equipment_mismatch`, `goal_mismatch`, `missing_data`, `plateau`, `progression_gap`, `split_mismatch`, `exercise_redundancy`, `weak_point`, or `safety_flag`, plus a Chinese explanation.
 - The smallest useful change for the next 2-6 weeks.
 - What to track next: target lifts, reps, RPE, body metrics, soreness, sleep, pain, adherence.

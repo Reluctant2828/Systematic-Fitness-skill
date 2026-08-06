@@ -13,7 +13,7 @@ Prefer evidence in this order:
 
 ## Safety gate
 
-Stop normal programming and give a safety-first answer when the user reports sharp pain, numbness, radiating pain, dizziness, fainting, chest pain, or severe unusual symptoms. Do not diagnose. Recommend stopping or reducing the provocative movement and seeking professional medical or coaching evaluation.
+Stop normal programming and give a safety-first answer when the user reports sharp pain, numbness, radiating pain, dizziness, fainting, chest pain, or severe unusual symptoms. For chest pain, fainting, severe dizziness, or severe neurological symptoms, advise local emergency services or urgent evaluation. For other sharp/radiating/persistent pain, stop the provoking movement and recommend qualified clinical evaluation. Do not diagnose.
 
 ## Goal modules
 

@@ -12,7 +12,7 @@ import re
 import shutil
 import tempfile
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,12 @@ STORE_FILES = {
     "body": ("body-metrics-history.json", "body_metrics"),
     "nutrition": ("nutrition-history.json", "nutrition_logs"),
 }
+
+SENSITIVE_KEY_RE = re.compile(
+    r"(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization|bearer|password|passwd|cookie|secret|credential|private[_-]?key)",
+    re.I,
+)
+CSV_EXTRA_KEY = "__extra_columns__"
 
 DEFAULT_STORES = {
     "profile": {
@@ -126,19 +132,19 @@ def parse_date(value: Any) -> str:
     try:
         return datetime.fromisoformat(text).date().isoformat()
     except ValueError:
-        return text
+        return ""
 
 
-def normalize_status(value: Any) -> tuple[str, bool]:
+def normalize_status(value: Any, default_status: str = "unknown") -> tuple[str, bool]:
     """Keep planned/skipped rows distinct from completed training evidence."""
     if value in (None, ""):
-        return "completed", True
+        return default_status, True
     if isinstance(value, bool):
         return ("completed" if value else "planned"), False
     text = norm_key(str(value))
     if text in {"completed", "complete", "done", "finished", "已完成", "完成", "已做", "true", "yes", "1", "是"}:
         return "completed", False
-    if text in {"planned", "plan", "scheduled", "计划", "已计划", "待完成", "未完成", "false", "no", "0", "否"}:
+    if text in {"planned", "plan", "scheduled", "计划", "已计划", "待完成", "false", "no", "0", "否"}:
         return "planned", False
     if text in {"skipped", "skip", "missed", "cancelled", "canceled", "跳过", "未训练", "缺席", "取消"}:
         return "skipped", False
@@ -163,7 +169,19 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
     suffix = path.suffix.lower()
     if suffix == ".csv":
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            return list(csv.DictReader(handle))
+            reader = csv.DictReader(handle, restkey=CSV_EXTRA_KEY)
+            rows = list(reader)
+            if reader.fieldnames and any(not str(name).strip() for name in reader.fieldnames):
+                raise ValueError("CSV contains an empty header name; fix the export before importing.")
+            if reader.fieldnames:
+                normalized_headers = [norm_key(str(name)) for name in reader.fieldnames]
+                if len(normalized_headers) != len(set(normalized_headers)):
+                    raise ValueError("CSV contains duplicate header names; fix the export before importing.")
+            if any(CSV_EXTRA_KEY in row for row in rows):
+                raise ValueError("CSV contains more values than headers; fix the export before importing.")
+            if any(any(value is None for value in row.values()) for row in rows):
+                raise ValueError("CSV contains a short row with missing columns; fix the export before importing.")
+            return rows
     if suffix == ".json":
         return flatten_json(json.loads(path.read_text(encoding="utf-8-sig")))
     raise ValueError(f"Unsupported input format: {suffix}. Use CSV or JSON.")
@@ -184,8 +202,13 @@ def save_store(store_dir: Path, kind: str, data: dict[str, Any], backup: bool = 
     store_dir.mkdir(parents=True, exist_ok=True)
     path = store_path(store_dir, kind)
     if backup and path.exists():
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        shutil.copy2(path, path.with_name(f"{path.name}.bak-{stamp}"))
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup_path = path.with_name(f"{path.name}.bak-{stamp}")
+        suffix = 1
+        while backup_path.exists():
+            backup_path = path.with_name(f"{path.name}.bak-{stamp}-{suffix}")
+            suffix += 1
+        shutil.copy2(path, backup_path)
     payload = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     temp_name: str | None = None
     try:
@@ -202,17 +225,109 @@ def save_store(store_dir: Path, kind: str, data: dict[str, Any], backup: bool = 
 
 
 def stable_id(record_type: str, record: dict[str, Any]) -> str:
-    payload = {key: value for key, value in record.items() if key not in ("_entry_id", "imported_at")}
+    def normalize(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {str(key): normalize(child) for key, child in value.items() if key is not None}
+        if isinstance(value, list):
+            return [normalize(child) for child in value]
+        if isinstance(value, str):
+            text = value.strip()
+            if re.fullmatch(r"[-+]?\d+(?:\.\d+)?", text):
+                try:
+                    number = float(text)
+                    return int(number) if number.is_integer() else number
+                except ValueError:
+                    pass
+            return text
+        return value
+
+    payload = {
+        key: normalize(value)
+        for key, value in record.items()
+        if key not in ("_entry_id", "imported_at", "source_file", "raw")
+    }
     encoded = json.dumps({"type": record_type, "record": payload}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(encoded.encode("utf-8")).hexdigest()[:16]
 
 
 def clean_record(record: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in record.items() if value not in (None, "")}
+    return {key: value for key, value in record.items() if key is not None and value not in (None, "")}
 
 
-def canonical_training(row: dict[str, Any], source: str) -> dict[str, Any]:
-    status, status_inferred = normalize_status(first_value(row, "status"))
+def assert_safe_rows(rows: list[dict[str, Any]]) -> None:
+    """Reject secret-bearing imports before any store is written."""
+    for index, row in enumerate(rows, start=2):
+        for key in row:
+            if key is not None and SENSITIVE_KEY_RE.search(str(key)):
+                raise ValueError(f"Input row {index} contains sensitive field '{key}'; remove it before importing.")
+
+
+def parse_numeric_tokens(value: Any) -> list[float]:
+    if value in (None, ""):
+        return []
+    text = str(value).strip().replace("\u2013", "-").replace("\u2014", "-")
+    text = re.sub(r"(?<=\d)\s*-\s*(?=\d)", ",", text)
+    return [float(match) for match in re.findall(r"[-+]?\d+(?:\.\d+)?", text)]
+
+
+def validate_record(record: dict[str, Any], kind: str) -> bool:
+    if not record:
+        return False
+    if record.get("date"):
+        try:
+            date.fromisoformat(str(record["date"]))
+        except ValueError as exc:
+            raise ValueError(f"Invalid date: {record['date']}") from exc
+    if kind == "training":
+        if not str(record.get("exercise", "")).strip():
+            return False
+        for field in ("sets", "reps", "load", "rpe", "rir"):
+            values = parse_numeric_tokens(record.get(field)) if field in ("sets", "reps") else parse_numeric_tokens(record.get(field))
+            if any(value < 0 for value in values):
+                raise ValueError(f"Training field '{field}' cannot be negative.")
+        if record.get("rpe") is not None and not 0 <= float(record["rpe"]) <= 10:
+            raise ValueError("RPE must be between 0 and 10.")
+        if record.get("rir") is not None and not 0 <= float(record["rir"]) <= 10:
+            raise ValueError("RIR must be between 0 and 10.")
+    elif kind == "body":
+        fields = ("bodyweight_kg", "waist_cm", "steps", "cardio_minutes", "sleep_hours")
+        if not any(record.get(field) is not None for field in fields):
+            return False
+        if any(record.get(field) is not None and float(record[field]) < 0 for field in fields):
+            raise ValueError("Body metric values cannot be negative.")
+    elif kind == "nutrition":
+        fields = ("calories", "protein_g", "carbs_g", "fat_g", "fiber_g")
+        if not any(record.get(field) is not None for field in fields) and not any(record.get(field) for field in ("meal", "food", "quantity")):
+            return False
+        if any(record.get(field) is not None and float(record[field]) < 0 for field in fields):
+            raise ValueError("Nutrition values cannot be negative.")
+    return True
+
+
+def validate_input_rows(rows: list[dict[str, Any]], kind: str) -> None:
+    numeric_fields = {
+        "training": ("sets", "reps", "load", "rpe", "rir"),
+        "body": ("bodyweight", "waist", "steps", "cardio_minutes", "sleep_hours"),
+        "nutrition": ("calories", "protein_g", "carbs_g", "fat_g", "fiber_g"),
+    }[kind]
+    for row_number, row in enumerate(rows, start=2):
+        for field in numeric_fields:
+            raw_value = first_value(row, field)
+            if raw_value in (None, ""):
+                continue
+            values = parse_numeric_tokens(raw_value)
+            if not values:
+                raise ValueError(f"Input row {row_number} has a non-numeric {field}: {raw_value}")
+            if field in {"sets", "reps"} and any(value <= 0 for value in values):
+                raise ValueError(f"Input row {row_number} has non-positive {field}: {raw_value}")
+            if field not in {"rpe", "rir", "sets", "reps"} and any(value < 0 for value in values):
+                raise ValueError(f"Input row {row_number} has negative {field}: {raw_value}")
+            if field in {"rpe", "rir"} and any(value < 0 or value > 10 for value in values):
+                raise ValueError(f"Input row {row_number} has out-of-range {field}: {raw_value}")
+
+
+def canonical_training(row: dict[str, Any], source: str, default_status: str = "unknown") -> dict[str, Any]:
+    status, status_inferred = normalize_status(first_value(row, "status"), default_status)
     return clean_record(
         {
             "date": parse_date(first_value(row, "date")),
@@ -228,7 +343,6 @@ def canonical_training(row: dict[str, Any], source: str) -> dict[str, Any]:
             "body_part": first_value(row, "body_part"),
             "notes": first_value(row, "notes"),
             "source_file": source,
-            "raw": row,
         }
     )
 
@@ -244,7 +358,6 @@ def canonical_body(row: dict[str, Any], source: str) -> dict[str, Any]:
             "sleep_hours": parse_float(first_value(row, "sleep_hours")),
             "notes": first_value(row, "notes"),
             "source_file": source,
-            "raw": row,
         }
     )
 
@@ -265,7 +378,6 @@ def canonical_nutrition(row: dict[str, Any], source: str) -> dict[str, Any]:
             "adherence": first_value(row, "adherence"),
             "notes": first_value(row, "notes"),
             "source_file": source,
-            "raw": row,
         }
     )
 
@@ -289,23 +401,40 @@ def append_records(store_dir: Path, kind: str, records: list[dict[str, Any]], ba
         existing.append(record)
         existing_ids.add(record["_entry_id"])
         added += 1
-    data["updated_at"] = imported_at
-    save_store(store_dir, kind, data, backup=backup)
+    if added:
+        data["updated_at"] = imported_at
+        save_store(store_dir, kind, data, backup=backup)
     return added, skipped
 
 
-def import_rows(store_dir: Path, kind: str, input_path: Path, backup: bool = False) -> tuple[int, int]:
+def import_rows(
+    store_dir: Path,
+    kind: str,
+    input_path: Path,
+    backup: bool = False,
+    default_status: str = "unknown",
+) -> tuple[int, int, int]:
     rows = read_rows(input_path)
+    assert_safe_rows(rows)
+    date_field = "date"
+    for row_number, row in enumerate(rows, start=2):
+        raw_date = first_value(row, date_field)
+        if raw_date not in (None, "") and not parse_date(raw_date):
+            raise ValueError(f"Input row {row_number} contains an invalid date: {raw_date}")
+    validate_input_rows(rows, kind)
     source = input_path.name
     if kind == "training":
-        records = [canonical_training(row, source) for row in rows]
+        records = [canonical_training(row, source, default_status=default_status) for row in rows]
     elif kind == "body":
         records = [canonical_body(row, source) for row in rows]
     elif kind == "nutrition":
         records = [canonical_nutrition(row, source) for row in rows]
     else:
         raise ValueError(f"Unsupported import type: {kind}")
-    return append_records(store_dir, kind, records, backup=backup)
+    accepted_records = [record for record in records if validate_record(record, kind)]
+    rejected = len(records) - len(accepted_records)
+    added, skipped = append_records(store_dir, kind, accepted_records, backup=backup)
+    return added, skipped, rejected
 
 
 def date_range(records: list[dict[str, Any]]) -> str:
@@ -338,7 +467,7 @@ def render_summary(store_dir: Path) -> str:
     waist_values = [row["waist_cm"] for row in body if isinstance(row.get("waist_cm"), (int, float))]
     state_counts = {state: 0 for state in ["completed", "planned", "skipped", "unknown"]}
     for row in training:
-        state = row.get("status") or "completed"
+        state = row.get("status") or "unknown"
         state_counts[state if state in state_counts else "unknown"] += 1
 
     lines = ["# User Data Summary", ""]
@@ -384,6 +513,13 @@ def main() -> int:
         subparser.add_argument("store_dir", type=Path)
         subparser.add_argument("input", type=Path)
         subparser.add_argument("--backup", action="store_true", help="Back up the target JSON before importing.")
+        if kind == "training":
+            subparser.add_argument(
+                "--default-status",
+                choices=["unknown", "completed", "planned", "skipped"],
+                default="unknown",
+                help="Status for rows without a status field. Use completed only after verifying the source.",
+            )
         subparser.set_defaults(kind=kind)
 
     summary_parser = subparsers.add_parser("summary", help="Print a user data store summary.")
@@ -398,9 +534,15 @@ def main() -> int:
 
     if args.command in {"import-training", "import-body", "import-nutrition"}:
         init_store(args.store_dir)
-        added, skipped = import_rows(args.store_dir, args.kind, args.input, backup=args.backup)
-        backup_note = "; backup created" if args.backup else ""
-        print(f"Imported {added} records into {STORE_FILES[args.kind][0]}; skipped {skipped} duplicates{backup_note}.")
+        added, skipped, rejected = import_rows(
+            args.store_dir,
+            args.kind,
+            args.input,
+            backup=args.backup,
+            default_status=getattr(args, "default_status", "unknown"),
+        )
+        backup_note = "; backup created" if args.backup and added else ""
+        print(f"Imported {added} records into {STORE_FILES[args.kind][0]}; skipped {skipped} duplicates; rejected {rejected} empty records{backup_note}.")
         return 0
 
     if args.command == "summary":

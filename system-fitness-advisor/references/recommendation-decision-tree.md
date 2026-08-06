@@ -11,7 +11,7 @@ Make the smallest change that solves the bottleneck. Do not rewrite the entire p
 1. Safety: pain, red flags, medical symptoms.
 2. Goal: hypertrophy, fat loss, specialization, powerlifting, mixed.
 3. Data confidence: logs/body metrics exact, partial, or sparse.
-4. Bottleneck: under-stimulus, over-fatigue, technique mismatch, adherence, recovery, equipment, or goal mismatch.
+4. Bottleneck: use one canonical enum: `under_stimulus`, `over_fatigue`, `technique_mismatch`, `recovery`, `adherence`, `equipment_mismatch`, `goal_mismatch`, `missing_data`, `plateau`, `progression_gap`, `split_mismatch`, `exercise_redundancy`, `weak_point`, or `safety_flag`.
 5. Action: choose one primary change and one optional secondary change.
 6. Tracking: define 2-6 week evidence needed to reassess.
 
@@ -19,7 +19,8 @@ Make the smallest change that solves the bottleneck. Do not rewrite the entire p
 
 | Signal | Action |
 |---|---|
-| Sharp pain, numbness, radiating pain, dizziness, fainting, chest pain, severe unusual symptoms | Stop normal programming through the symptom; advise reducing/stopping provoking activity and seeking professional evaluation. |
+| Chest pain, fainting, severe dizziness, severe neurological symptoms, or another emergency warning sign | Stop normal programming immediately and advise local emergency services or urgent evaluation. |
+| Sharp/radiating pain, numbness, or persistent unusual pain | Stop the provoking movement and seek qualified clinical evaluation. |
 | Joint discomfort only on one movement | Modify load/range, swap close variation, reduce provocative volume. |
 | General soreness/fatigue | Adjust volume, RPE, rest, or deload based on performance trend. |
 
@@ -37,16 +38,20 @@ Make the smallest change that solves the bottleneck. Do not rewrite the entire p
 
 | Bottleneck | Signs | Primary action |
 |---|---|---|
-| Under-stimulus | Recovery good, target not progressing, low volume/frequency | Add 1-2 sets/week or one exposure. |
-| Over-fatigue | Multiple lifts down, soreness/sleep/joints poor | Reduce volume 20-40% or deload. |
-| Technique mismatch | Target not felt, compensation rises | Change cues, load, exercise stability, or order. |
-| Progression missing | Same work repeated with no rule | Add double progression or RPE-based progression. |
-| Split mismatch | Schedule inconsistent, missed body parts | Change split to match days and adherence. |
-| Exercise redundancy | Many same-slot exercises, poor tracking | Consolidate exercises and define slots. |
-| Equipment mismatch | Planned loads impossible, machine jumps invalid | Adjust increments or choose same-slot available movement. |
-| Fat-loss plateau | 2-3 weeks no average/waist/photo change with adherence | Add steps/cardio first, then small calorie cut. |
-| Powerlifting weak point | Specific sticking point or lift lag | Add matching variation/accessory, not random volume. |
-| Specialization need | One body part lags despite general plan | Run 4-8 week priority block and reduce non-target volume. |
+| `under_stimulus` | Recovery good, target not progressing, low volume/frequency | Add 1-2 sets/week or one exposure. |
+| `over_fatigue` | Multiple lifts down, soreness/sleep/joints poor | Reduce volume 20-40% or deload. |
+| `technique_mismatch` | Target not felt, compensation rises | Change cues, load, exercise stability, or order. |
+| `recovery` | Sleep, stress, soreness, or readiness is limiting work | Reduce stress and protect key movements. |
+| `adherence` | Planned frequency or nutrition is not repeatable | Simplify the plan and solve the limiting habit. |
+| `equipment_mismatch` | Planned loads impossible, machine jumps invalid | Adjust increments or choose same-slot available movement. |
+| `goal_mismatch` | The current plan serves a different primary goal | Re-rank the goal before changing exercises. |
+| `missing_data` | No reliable completion, trend, or constraint evidence | Ask the minimum high-impact question or start conservatively. |
+| `plateau` | 2-3 weeks without body or performance change after adherence check | Follow the appropriate small adjustment order. |
+| `progression_gap` | The same work repeats without a clear rep/load/RIR rule | Add a measurable progression rule before changing the movement. |
+| `split_mismatch` | Schedule is inconsistent or body parts are repeatedly missed | Choose the simplest split that fits actual availability. |
+| `exercise_redundancy` | Several movements fill the same slot without adding signal | Consolidate and keep the most trackable pain-free option. |
+| `weak_point` | One body part lags despite adequate general training | Run a bounded priority block and reduce non-target fatigue. |
+| `safety_flag` | Red-flag symptom or pain boundary | Stop normal programming and route to safety-only output. |
 
 ## Action menu
 
@@ -148,6 +153,8 @@ Default: cut sets 30-50%, reduce load 5-15%, keep movement patterns, stay farthe
 | Body shaping + local weak point | Fat-loss/body-metric trend plus target muscle block | Do not promise local fat loss. |
 
 ## Output decision format
+
+When using this reference, inherit the selected output profile from `SKILL.md`. At minimum, output `结论` and `数据状态`, include the canonical bottleneck id plus its Chinese explanation, and include `下一次训练` only when the user asked for planning or log review. Include the canonical exercise-match fields when an exercise is discussed.
 
 When using this reference, output:
 
