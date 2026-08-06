@@ -641,7 +641,7 @@ def summarize(
                 "match_candidates": list(exercise_records[0].match_candidates),
                 "sessions": len(dated_sessions) if dated_sessions else len({record.session for record in exercise_records}),
                 "hard_sets": sum(1 for record in exercise_records if record.hard_set),
-                "best_load": max((record.load or 0 for record in exercise_records), default=0),
+                "best_load": max((record.load for record in exercise_records if record.load is not None), default=None),
                 "best_e1rm": round(max(one_rms), 1) if one_rms else None,
                 "first_recent_e1rm": round(first, 1) if first else None,
                 "last_recent_e1rm": round(last, 1) if last else None,
