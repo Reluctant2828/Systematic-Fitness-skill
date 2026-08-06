@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/Agent-Skill-purple.svg" alt="Agent Skill">
   <img src="https://img.shields.io/badge/Fitness-Knowledge_Base-green.svg" alt="Fitness Knowledge Base">
-  <img src="https://img.shields.io/badge/Status-Building-orange.svg" alt="Status">
+  <img src="https://img.shields.io/badge/Status-Maintained-brightgreen.svg" alt="Status">
   <img src="https://img.shields.io/badge/Runtime-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor%20%C2%B7%20OpenClaw%20%C2%B7%20Hermes-d946ef" alt="Runtime">
 </p>
 
@@ -129,7 +129,7 @@ System Fitness Advisor is built on the open [Agent Skills](https://agentskills.i
 Open the agent runtime you use, such as Claude Code, Codex, Cursor, OpenClaw, Hermes, CodeBuddy, Gemini CLI, or OpenCode, and tell it:
 
 ```text
-Install this skill for me: https://github.com/Reluctant2828/System-Fitness-Advisor-skill
+Install this skill for me: https://github.com/Reluctant2828/System-Fitness-Advisor-skill/tree/main/system-fitness-advisor
 ```
 
 ---
@@ -197,8 +197,8 @@ If you do not understand training splits, System Fitness Advisor will automatica
 | Source | Supported | Notes |
 |---|---:|---|
 | Manual user input | Yes | Height, weight, goal, training experience, equipment conditions |
-| Training logs | Yes | Supports Excel, CSV, JSON, and Markdown imports |
-| Fitness app data | Yes | Xunji API key integration is recommended |
+| Training logs | Yes | CSV/JSON are handled by the bundled importer; other readable exports can be analyzed manually by the runtime |
+| Fitness app data | Yes | Xunji/训记 reads are read-only by default; write-back requires an explicit change summary and confirmation |
 | Body assessment data | Yes | Body weight, measurements, body-fat estimates, strength performance |
 | Nutrition records | Yes | Calories, protein, water intake, and eating habits |
 | Sleep and recovery | Yes | Sleep duration, fatigue, soreness, and recovery feedback |
@@ -393,4 +393,3 @@ system-fitness-advisor/
 - Historical user data should only be saved with user consent and should preferably be stored outside the skill folder.
 
 ---
-

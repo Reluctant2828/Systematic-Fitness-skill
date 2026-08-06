@@ -9,6 +9,8 @@ import hashlib
 import json
 import math
 import re
+import shutil
+import tempfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +56,7 @@ DEFAULT_STORES = {
 FIELD_ALIASES = {
     "date": ["date", "日期", "day", "created_at", "workout_date"],
     "session": ["session", "训练日", "课程", "workout", "workout_name", "split"],
+    "status": ["status", "state", "状态", "完成状态", "done", "completed", "is_completed", "是否完成", "记录状态"],
     "exercise": ["exercise", "动作", "动作名称", "name", "exercise_name", "movement"],
     "sets": ["sets", "组", "组数", "set_count"],
     "reps": ["reps", "次数", "rep", "repetitions"],
@@ -126,6 +129,22 @@ def parse_date(value: Any) -> str:
         return text
 
 
+def normalize_status(value: Any) -> tuple[str, bool]:
+    """Keep planned/skipped rows distinct from completed training evidence."""
+    if value in (None, ""):
+        return "completed", True
+    if isinstance(value, bool):
+        return ("completed" if value else "planned"), False
+    text = norm_key(str(value))
+    if text in {"completed", "complete", "done", "finished", "已完成", "完成", "已做", "true", "yes", "1", "是"}:
+        return "completed", False
+    if text in {"planned", "plan", "scheduled", "计划", "已计划", "待完成", "未完成", "false", "no", "0", "否"}:
+        return "planned", False
+    if text in {"skipped", "skip", "missed", "cancelled", "canceled", "跳过", "未训练", "缺席", "取消"}:
+        return "skipped", False
+    return "unknown", False
+
+
 def flatten_json(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, list):
         rows: list[dict[str, Any]] = []
@@ -161,9 +180,25 @@ def load_store(store_dir: Path, kind: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def save_store(store_dir: Path, kind: str, data: dict[str, Any]) -> None:
+def save_store(store_dir: Path, kind: str, data: dict[str, Any], backup: bool = False) -> None:
     store_dir.mkdir(parents=True, exist_ok=True)
-    store_path(store_dir, kind).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path = store_path(store_dir, kind)
+    if backup and path.exists():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        shutil.copy2(path, path.with_name(f"{path.name}.bak-{stamp}"))
+    payload = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    temp_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile("wb", dir=store_dir, prefix=f".{path.name}.", suffix=".tmp", delete=False) as handle:
+            temp_name = handle.name
+            handle.write(payload)
+            handle.flush()
+        Path(temp_name).replace(path)
+    finally:
+        if temp_name:
+            temp_path = Path(temp_name)
+            if temp_path.exists():
+                temp_path.unlink()
 
 
 def stable_id(record_type: str, record: dict[str, Any]) -> str:
@@ -177,11 +212,14 @@ def clean_record(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def canonical_training(row: dict[str, Any], source: str) -> dict[str, Any]:
+    status, status_inferred = normalize_status(first_value(row, "status"))
     return clean_record(
         {
             "date": parse_date(first_value(row, "date")),
             "session": first_value(row, "session"),
             "exercise": first_value(row, "exercise"),
+            "status": status,
+            "status_inferred": status_inferred,
             "sets": first_value(row, "sets"),
             "reps": first_value(row, "reps"),
             "load": parse_float(first_value(row, "load")),
@@ -232,7 +270,7 @@ def canonical_nutrition(row: dict[str, Any], source: str) -> dict[str, Any]:
     )
 
 
-def append_records(store_dir: Path, kind: str, records: list[dict[str, Any]]) -> tuple[int, int]:
+def append_records(store_dir: Path, kind: str, records: list[dict[str, Any]], backup: bool = False) -> tuple[int, int]:
     data = load_store(store_dir, kind)
     list_key = STORE_FILES[kind][1]
     existing = data.setdefault(list_key, [])
@@ -252,11 +290,11 @@ def append_records(store_dir: Path, kind: str, records: list[dict[str, Any]]) ->
         existing_ids.add(record["_entry_id"])
         added += 1
     data["updated_at"] = imported_at
-    save_store(store_dir, kind, data)
+    save_store(store_dir, kind, data, backup=backup)
     return added, skipped
 
 
-def import_rows(store_dir: Path, kind: str, input_path: Path) -> tuple[int, int]:
+def import_rows(store_dir: Path, kind: str, input_path: Path, backup: bool = False) -> tuple[int, int]:
     rows = read_rows(input_path)
     source = input_path.name
     if kind == "training":
@@ -267,7 +305,7 @@ def import_rows(store_dir: Path, kind: str, input_path: Path) -> tuple[int, int]
         records = [canonical_nutrition(row, source) for row in rows]
     else:
         raise ValueError(f"Unsupported import type: {kind}")
-    return append_records(store_dir, kind, records)
+    return append_records(store_dir, kind, records, backup=backup)
 
 
 def date_range(records: list[dict[str, Any]]) -> str:
@@ -298,10 +336,17 @@ def render_summary(store_dir: Path) -> str:
     daily_protein = [totals["protein_g"] for totals in nutrition_by_date.values() if totals.get("protein_g")]
     bodyweights = [row["bodyweight_kg"] for row in body if isinstance(row.get("bodyweight_kg"), (int, float))]
     waist_values = [row["waist_cm"] for row in body if isinstance(row.get("waist_cm"), (int, float))]
+    state_counts = {state: 0 for state in ["completed", "planned", "skipped", "unknown"]}
+    for row in training:
+        state = row.get("status") or "completed"
+        state_counts[state if state in state_counts else "unknown"] += 1
 
     lines = ["# User Data Summary", ""]
     lines.append(f"- Store: {store_dir}")
     lines.append(f"- Training records: {len(training)} ({date_range(training)})")
+    lines.append(
+        f"- Training states: completed={state_counts['completed']}, planned={state_counts['planned']}, skipped={state_counts['skipped']}, unknown={state_counts['unknown']}"
+    )
     lines.append(f"- Body metric records: {len(body)} ({date_range(body)})")
     lines.append(f"- Nutrition records: {len(nutrition)} ({date_range(nutrition)})")
     lines.append(f"- Avg daily calories: {avg(daily_calories) if daily_calories else 'unknown'}")
@@ -338,6 +383,7 @@ def main() -> int:
         subparser = subparsers.add_parser(command, help=help_text)
         subparser.add_argument("store_dir", type=Path)
         subparser.add_argument("input", type=Path)
+        subparser.add_argument("--backup", action="store_true", help="Back up the target JSON before importing.")
         subparser.set_defaults(kind=kind)
 
     summary_parser = subparsers.add_parser("summary", help="Print a user data store summary.")
@@ -352,8 +398,9 @@ def main() -> int:
 
     if args.command in {"import-training", "import-body", "import-nutrition"}:
         init_store(args.store_dir)
-        added, skipped = import_rows(args.store_dir, args.kind, args.input)
-        print(f"Imported {added} records into {STORE_FILES[args.kind][0]}; skipped {skipped} duplicates.")
+        added, skipped = import_rows(args.store_dir, args.kind, args.input, backup=args.backup)
+        backup_note = "; backup created" if args.backup else ""
+        print(f"Imported {added} records into {STORE_FILES[args.kind][0]}; skipped {skipped} duplicates{backup_note}.")
         return 0
 
     if args.command == "summary":

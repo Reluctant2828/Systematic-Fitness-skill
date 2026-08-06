@@ -29,10 +29,12 @@ python scripts/manage_user_data.py init user-data
 python scripts/manage_user_data.py import-training user-data workout-log.csv
 python scripts/manage_user_data.py import-body user-data body-metrics.csv
 python scripts/manage_user_data.py import-nutrition user-data nutrition-log.csv
+# Add --backup to any import when the target JSON already contains user data.
+python scripts/manage_user_data.py import-training user-data workout-log.csv --backup
 python scripts/manage_user_data.py summary user-data
 ```
 
-The script uses only the Python standard library and deduplicates repeated imports with stable entry IDs.
+The script uses only the Python standard library, writes through a temporary file, and deduplicates repeated imports with stable entry IDs. `--backup` copies the target JSON to a timestamped `.bak-*` file before an import.
 
 If Python execution is unavailable, create or update the JSON files manually using the templates in `templates/user-data/`.
 
@@ -50,6 +52,8 @@ If Python execution is unavailable, create or update the JSON files manually usi
 - Ask before creating or modifying a long-term user data folder.
 - Preserve raw imported fields under `raw` when possible.
 - Keep imported records append-only unless the user asks to correct or delete an entry.
+- Preserve training `status` as `completed`, `planned`, `skipped`, or `unknown`; only completed records count as progression evidence.
+- If the source has no status field, store `status_inferred: true` and treat the completion state as lower-confidence until confirmed.
 - Mark uncertain screenshot extraction with `confidence: "screenshot_uncertain"`.
 - Never expose API keys or private secrets in saved JSON.
 - When data conflicts, keep both records and note the conflict instead of silently overwriting.

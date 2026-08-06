@@ -1,174 +1,123 @@
 ---
 name: system-fitness-advisor
-description: Use when the user invokes /fitness, $system-fitness-advisor, or asks for systematic fitness planning, long-term user fitness data storage, initial profile intake, workout-log or screenshot analysis, nutrition log analysis tied to training, training-plan modification, exercise substitution, or programming across hypertrophy splits, fat-loss/recomposition, body-part specialization, strength, or powerlifting. Avoid for medical diagnosis, unrelated nutrition-only lookup, or non-training creative tasks.
+description: Use when the user invokes /fitness, $system-fitness-advisor, or asks for evidence-based fitness planning, workout-log or screenshot review, body-metric or nutrition decisions tied to training, exercise matching or substitution, long-term fitness data import/update, or programming for hypertrophy, fat loss/recomposition, specialization, strength, or powerlifting. Trigger on 增肌, 减脂, 塑形, 部位专攻, 力量举, 训练记录, 训记, 体重/腰围趋势, 加量, 减量, or deload. Do not use for medical diagnosis, emergency symptoms, or nutrition-only lookups.
 ---
 
 # System Fitness Advisor
 
-## Purpose
+Turn the user's actual training evidence into the smallest useful next decision. Return a concrete next session or a bounded change to the current plan, not a generic template.
 
-Turn user fitness data into systematic, goal-aware training recommendations. Use the skill to collect missing context, classify the training goal, apply programming rules, and return practical text advice.
+## Operating contract
 
-## Runtime portability
+- Match the user's language; use Chinese when the user writes Chinese.
+- Treat this skill as coaching support, not medical diagnosis. If the user reports sharp or radiating pain, numbness, chest pain, fainting, dizziness, or another severe unusual symptom, stop normal programming and recommend reducing the provoking activity and seeking qualified evaluation.
+- Default to read-only. Never print, store, or echo API keys, tokens, passwords, cookies, or private file contents that are not needed for the decision.
+- Keep the user's explicit constraints authoritative: must-keep exercises, ordinary bench versus paused bench, available equipment, machine increments, and corrections to prior records.
 
-This skill follows the open Agent Skills folder pattern: `SKILL.md` with YAML `name` and `description`, plus optional relative resources. Use only relative paths such as `references/...`, `data/...`, `scripts/...`, and `templates/...` so the folder can be moved between compatible runtimes.
+## Decision workflow
 
-- `references/`, `data/`, `examples/`, and `templates/` are plain text, CSV, or JSON resources and should work anywhere the runtime can read local skill files.
-- `scripts/summarize_training_logs.py` and `scripts/manage_user_data.py` use only the Python standard library. If a runtime cannot execute Python, read the relevant references and update or summarize records manually from the provided text, screenshot, CSV, or JSON data.
-- `agents/openai.yaml` is optional Codex/OpenAI UI metadata. Other runtimes may ignore it without changing the skill behavior.
+Follow this order. Do not skip directly from a goal word to a workout template.
 
-## When to use this skill
+1. **Classify the request.** Set `intent` to one or more of: `intake`, `next-session`, `log-review`, `plan-change`, `exercise-choice`, `body-metrics`, `nutrition-for-training`, `data-management`, `algorithm-design`, or `api-sync`.
+2. **Normalize the evidence.** Separate `goal`, `time_horizon`, `schedule`, `equipment`, `current_program`, `recent_logs`, `body_metrics`, `nutrition`, `recovery`, `pain_constraints`, `preferences`, `unknowns`, and `assumptions`.
+3. **Classify record state.** Every workout record is `completed`, `planned`, `skipped`, or `unknown`.
+   - Only `completed` records prove progression, volume, or the next rolling split slot.
+   - A `planned` record is intent, not performance. Do not advance a PPL pointer from it.
+   - A `skipped` record is rest; schedule that slot next and do not add punishment, fasting, double sessions, or automatic cardio.
+   - If a status is missing, use `unknown` in the explanation and may conservatively treat the row as completed only when the source is explicitly a completed-log export. Mark that inference.
+4. **Run the safety gate.** Do this before selecting exercises, volume, or intensity.
+5. **Load only the needed references.** Always use `references/training-algorithm-library.md` for shared rules. Add the route-specific references below; do not read every module by default.
+6. **Compare the latest completed same-slot or same-type session.** Explain what changed, what stays fixed, and why the change is warranted. Calendar time alone never advances a rolling split.
+7. **Select or match exercises.** Read `data/exercise-library.json` before selecting, replacing, or rotating a movement.
+8. **Apply equipment reality.** Validate load jumps and minimums after choosing the movement and before writing the prescription.
+9. **Choose the smallest useful change.** Name the bottleneck before changing volume, exercise, split, cardio, or calories.
+10. **Return a concrete plan and tracking rule.** Include the next session when the user asks what to do next; include decision thresholds and stop lines for the next 2-6 weeks.
 
-Use when the user:
+## Reference routing
 
-- Invokes `/fitness`, `$system-fitness-advisor`, or explicitly asks for a systematic fitness plan.
-- Asks "我该怎么做", "我的训练计划是什么", "我要怎么修改我的训练计划", or similar planning questions.
-- Provides training logs, screenshots, body metrics, files, API data, or free text and wants analysis.
-- Wants to save, import, update, or reuse long-term user data, training history, body metrics, or nutrition logs.
-- Provides diet records or nutrition logs and wants training-relevant decisions for fat loss, recomposition, hypertrophy, strength, or recovery.
-- Wants programming for hypertrophy, fat loss, recomposition, body shaping, body-part specialization, strength, or powerlifting.
-- Wants training algorithm or rules design for a fitness planning system.
+Use these direct links from this file. References are progressive-disclosure resources; load only the files needed for the request.
 
-Do not use when the request is only:
+| Situation | Read |
+|---|---|
+| Initial profile, scattered personal data, or "how do I start" | `references/user-profile-intake.md` |
+| Save, import, update, persist, or reuse local long-term data | `references/user-data-management.md` |
+| Xunji/训记 API read, latest completion lookup, or write-back | `references/xunji-integration.md` |
+| Workout logs, screenshots, exports, stalled progress, add/reduce volume, or deload | `references/training-log-analysis.md` and `references/recommendation-decision-tree.md` |
+| Bodyweight, waist, photos, body-fat estimate, steps, sleep, or cardio trend | `references/body-metrics-analysis.md` |
+| Nutrition records or diet changes that affect training, recovery, or body composition | `references/nutrition-log-analysis.md` |
+| Hypertrophy or split selection | `references/goal-hypertrophy.md` and `references/hypertrophy-splits.md` |
+| Two-, four-, or five-day split details | The matching `references/split-*-division.md` file |
+| PPL execution, rolling slots, or specialization insertion | `references/ppl-practical.md` |
+| Fat-loss plateau, NEAT, cardio, diet break, or local-shaping questions | `references/goal-fat-loss-recomposition.md` and `references/fat-loss-recomposition-advanced.md` |
+| Weak point or 4-8 week body-part block | `references/goal-specialization.md` and `references/specialization-advanced.md` |
+| SBD, e1RM, sticking point, peaking, or meet attempts | `references/goal-powerlifting.md` and `references/powerlifting-advanced.md` |
+| Change or extend the exercise library | `references/exercise-library-schema.md` |
 
-- Medical diagnosis, injury diagnosis, or emergency symptom triage.
-- Nutrition-only lookup with no training decision, such as one food's calories.
-- Non-training creative work, such as posters, branding, or gym decoration.
+For local CSV/JSON training logs, run `scripts/summarize_training_logs.py` first and use its output as evidence, not as the final coaching conclusion. For local long-term stores, use `scripts/manage_user_data.py` only after the write gate below is satisfied.
 
-If another installed skill also claims `/fitness`, keep only one active `/fitness` skill or use `$system-fitness-advisor` for explicit routing. This skill intentionally treats `/fitness` as its primary user-facing trigger.
+## Evidence and conflict rules
 
-## Inputs
+- Prefer the user's latest explicit correction and a server- or screenshot-confirmed `completed` record over an older plan or inferred status.
+- Preserve conflicting records and label the conflict; do not silently overwrite a completed record with a plan.
+- Label evidence as `exact`, `partial`, `screenshot_uncertain`, `sparse`, or `inferred`. Do not present e1RM, body-fat estimates, or screenshot values as precise when their source is uncertain.
+- Use the latest 2-6 weeks for training trends when available. One session is a snapshot, not a plateau.
+- If a requested movement is missing: exact name -> user-provided alias -> unique near-name -> same-slot substitution -> explicit outside-library temporary movement. Ambiguous candidates must be shown for confirmation; never silently force a match.
+- Keep a requested core movement when it is available and pain-free. Do not replace ordinary bench with paused bench or remove a movement just because its progression is inconvenient.
+- Keep main slots stable for assessment. Rotate accessories only when there is evidence of a stall, pain, redundancy, poor target loading, equipment conflict, or a new block.
 
-Accept any of these inputs:
+## Planning rules
 
-- Text: goal, schedule, training history, current plan, logs, soreness, preferences.
-- Files: CSV, spreadsheet, JSON, markdown, notes, exported app data, program sheets.
-- Screenshots: training logs, body metrics, app dashboards, plan cards.
-- API data or API keys: use only for the requested analysis; never reveal secrets in the answer.
-- Long-term data store: `profile.json`, `training-history.json`, `body-metrics-history.json`, and `nutrition-history.json` in a user-approved folder.
-- Built-in exercise library: use `data/exercise-library.json` for exercise selection and substitutions. Read `references/exercise-library-schema.md` when changing or extending the library.
+Apply `references/training-algorithm-library.md` and the selected goal module. These rules are hard constraints for generated prescriptions:
 
-Prefer these data fields when available:
+- Fixed machines: use the machine's real increment, defaulting to 5 kg only when the user has not supplied a different increment. Never invent decimal or unsupported 2.5 kg machine loads.
+- Barbells: never prescribe below the empty bar (20 kg total). Main barbell lifts default to +5 kg total only after the rep/RIR threshold is met.
+- Dumbbells: use the user's rack increment; if unknown, state the assumed increment instead of treating it as fact.
+- Long-lever shoulder isolations, especially standing machine lateral raise: progress reps, control, pauses, density, or a drop set before a large load jump.
+- Compounds usually stay at 1-3 RIR; isolation work may approach failure when technique and recovery support it. Do not turn every set into failure training.
+- For fat loss, preserve key lifting performance and adjust steps/cardio/food conservatively. Do not prescribe dehydration, extreme deficits, or fixed outcomes.
 
-- Goal: hypertrophy, fat loss, recomposition, body-part specialization, strength, powerlifting, general health.
-- Profile: age, sex, height, weight, training age, injury or pain constraints.
-- Schedule: days per week, session duration, sleep, recovery, stress, daily activity.
-- Equipment: gym, home equipment, machines, available load jumps.
-- Current plan: split, exercises, sets, reps, load, RPE/RIR, rest, progression rules.
-- Recent logs: at least 2-6 weeks of completed workouts if available.
-- Nutrition logs: calories, protein, carbs, fat, fiber, meal timing, hunger, adherence, and notes when the request involves body composition, recovery, or performance.
+## Write and sync gate
 
-If important information is missing, ask only the smallest number of questions needed to make the next recommendation useful. Use `templates/user-intake.md` when a full intake is appropriate.
+Separate permission to read from permission to write.
 
-## Workflow
+### Local user-data store
 
-1. Identify the user's primary goal and time horizon. If goals conflict, prioritize one primary goal and one secondary goal.
-2. Classify the request type before giving advice:
-   - Initial intake: the user is new, provides body data, asks how to start, or lacks a usable baseline.
-   - Training-log review: the user provides completed workouts, screenshots, app exports, or asks why progress stalled.
-   - Plan modification: the user has a current plan and asks what to keep, remove, reorder, or progress.
-   - Exercise-library decision: the user asks to choose, substitute, add, or interpret exercises.
-   - User-data management: the user asks to save, import, persist, reuse, or summarize profile, training, body metrics, or nutrition history.
-   - Nutrition-log review: the user provides meal logs, calories, macros, hunger, or adherence and wants diet decisions tied to training or body composition.
-   - Algorithm design: the user asks how the fitness system should reason or generate plans.
-3. Parse all provided data into profile, constraints, current program, recent performance, recovery, and adherence.
-   - Read `references/user-data-management.md` when the user asks to save, import, update, persist, or reuse long-term profile, training, body metrics, or nutrition records. If a runtime can execute Python and the user approves a store path, use `scripts/manage_user_data.py`.
-   - Read `references/user-profile-intake.md` when the user is new, provides initial personal data, gives scattered context, asks how to start, or lacks enough profile/schedule/equipment information.
-   - Read `references/training-log-analysis.md` when the user provides workout logs, screenshots, app exports, API data, or asks what is wrong with their current plan or progress. If logs are in local CSV or JSON, run `scripts/summarize_training_logs.py` first and use its output as the structured evidence summary.
-   - Read `references/body-metrics-analysis.md` when the user provides bodyweight, waist, measurements, photos, body-fat estimates, steps, cardio, sleep, or asks whether body composition is changing.
-   - Read `references/nutrition-log-analysis.md` when the user provides nutrition logs, calories, macros, meal records, hunger, adherence, or asks how diet should support training, recovery, fat loss, recomposition, hypertrophy, strength, or powerlifting.
-4. Run safety screening before programming. If the user reports sharp pain, numbness, dizziness, chest pain, fainting, or severe unusual symptoms, do not prescribe training through the symptom; advise stopping or reducing the relevant activity and seeking professional evaluation.
-5. Read `references/training-algorithm-library.md` for shared data hierarchy, safety, deload, fatigue, load rounding, equipment constraints, and plan-construction rules.
-6. Route the request to the goal module before building the plan:
-   - Read `references/goal-hypertrophy.md` for 增肌, 变壮, 围度, muscle-size, or hypertrophy requests.
-   - Read `references/goal-fat-loss-recomposition.md` for 减脂, 塑形, 体脂下降, recomposition, or muscle retention while dieting.
-   - Read `references/goal-specialization.md` for 部位专攻, weak points, lagging muscles, or focused blocks for one or two body parts.
-   - Read `references/goal-powerlifting.md` for 力量举, SBD, 深蹲卧推硬拉, max strength, peaking, or meet-style training.
-   - If goals are mixed, choose one primary module and one secondary module; say which goal is primary.
-   - If the fat-loss request involves 热量缺口, 蛋白质, 有氧, NEAT, 步数, 平台期, diet break, 局部塑形, 腰腹线条, 肩背臀腿比例, or 减脂期训练调整, also read `references/fat-loss-recomposition-advanced.md`.
-   - If the specialization request involves 部位专攻, 弱项诊断, 目标肌没感觉, 胸/肩/背/手臂/臀腿/小腿专项, 4-8 周专项周期, or priority insertion into a split, also read `references/specialization-advanced.md`.
-   - If the strength request involves 力量举, SBD, 1RM/e1RM, 深蹲/卧推/硬拉技术或卡点, top single, back-off sets, DUP, 12 周周期, peaking, or attempts, also read `references/powerlifting-advanced.md`.
-   - If the hypertrophy request involves 二分化, 三分化, 四分化, 五分化, PPL, upper/lower, weekly schedule, or split choice, also read `references/hypertrophy-splits.md`.
-   - If the hypertrophy request involves 二分化, Upper/Lower, 上肢/下肢, 上肢 A/B, 下肢 A/B, 水平推拉, 膝主导, 垂直推拉, 髋主导, or a 4-day upper/lower schedule, also read `references/split-two-division.md`.
-   - If the hypertrophy request involves PPL 实操, 推力日, 拉力日, 腿日, 卧推技术, 背阔张力, 肩胛控制, 10+5 递进, 髋/后链/足踝, 每周 6 练 PPL, 4-5 练滚动三分化, 3 练保守版, 专项插入, or whether to copy high-level low-volume training, also read `references/ppl-practical.md`.
-   - If the hypertrophy request involves 四分化, 4-day split, 上肢 A/下肢 A/上肢 B/下肢 B, 推/拉/腿/弱项, or strength-biased plus hypertrophy-biased days, also read `references/split-four-division.md`.
-   - If the hypertrophy request involves 五分化, 5-day split, 胸日, 背日, 肩日, 手臂日, 主训练日 + 二次刺激, or 弱项补充日, also read `references/split-five-division.md`.
-7. Apply the four module boundaries:
-   - Hypertrophy: choose the split first, then slots, weekly volume, progression, and specialization insertion. Support 二分化, 三分化/PPL, 四分化, 五分化.
-   - Fat loss/recomposition: preserve key strength and muscle stimulus while adjusting volume, cardio, steps, recovery, and deficit compatibility.
-   - Body-part specialization: diagnose the weak point, raise target frequency or priority for 4-8 weeks, and reduce non-target maintenance volume when recovery is limited.
-   - Strength/powerlifting: organize SBD or close variations by technical priority, intensity exposure, back-off volume, fatigue management, and peaking or testing rules.
-8. Read `data/exercise-library.json` before selecting, replacing, or rotating exercises. Prefer movements that match the user's target body part, equipment, movement pattern, goal, and constraints.
-9. If the requested exercise is not in the library, use the missing-exercise fallback:
-   - First try synonym, abbreviation, and near-name matching, such as 臀推 vs 臀冲.
-   - Then search same body part, equipment, and movement pattern for substitutions.
-   - If no suitable library exercise exists, allow a temporary outside-library exercise, but clearly state that it is not in `data/exercise-library.json` and explain the reason for using it.
-   - Ask whether the user wants to add the outside-library exercise to the library when it seems recurring or important.
-   - Do not refuse to build a training recommendation only because the exercise library is incomplete.
-10. Diagnose the current plan using weekly volume, intensity, frequency, exercise selection, progression, fatigue, and adherence.
-11. Read `references/recommendation-decision-tree.md` when choosing between keeping the plan, adding stimulus, reducing fatigue, changing exercises, changing the split, running specialization, deloading, or asking for missing data.
-12. Produce the smallest useful change when modifying an existing plan. Avoid rewriting everything when exercise order, volume, progression, or recovery changes are enough.
-13. Specify progression rules, deload or pivot conditions, and measurable indicators for the next 2-6 weeks.
-14. Apply the shared load and equipment constraints before outputting planned weights: machine loads use valid machine jumps, barbells do not go below 20 kg, main barbell lifts default to +5 kg total jumps, dumbbells follow rack increments, and long-lever shoulder isolations progress by reps/control/density before load.
-15. Separate facts from assumptions. If screenshot or file extraction is uncertain, mark uncertain values instead of treating them as exact.
+- A request to analyze is read-only. Do not create or modify a long-term folder unless the user explicitly asks to save/import/update it or confirms the proposed change.
+- Before a write, state the target path, files, record count, duplicate policy, and any conflicts. Then use `scripts/manage_user_data.py`; report added and skipped counts afterward.
+- Keep raw imported fields where possible, append by default, and preserve `planned`, `completed`, and `skipped` status. Do not delete or rewrite history without a separate explicit request.
 
-## Output requirements
+### Xunji/训记 API
 
-Return text conclusions by default. Match the user's language, using Chinese when the user writes Chinese.
+- Read-only by default. Use `references/xunji-integration.md` and an approved local helper or user-supplied contract; never guess a request body or invent a successful response.
+- For write-back, show a field-level change summary and wait for explicit confirmation in the current conversation. Commit once, preserve `localid`, `start`, `end`, and `done`, then re-read the server record to verify parity.
+- If a write times out, returns SSL/EOF, or the client disconnects, assume it may have landed. Re-read server state before retrying. Do not use a server "dry run" as a safety gate when the endpoint may persist it.
+- A legal read response may have top-level `res` without `success: true`; validate the actual payload shape before declaring failure.
 
-Use this structure unless the user requests another format:
+## Output contract
 
-1. `结论`: one short answer explaining what the user should do now.
-2. `数据状态`: what was provided, what was extracted, and whether confidence is exact, partial, screenshot-uncertain, or sparse.
-3. `依据`: the key data points, assumptions, bottleneck, and constraints behind the recommendation.
-4. `目标模块`: the primary module among 增肌, 减脂塑形, 部位专攻, 力量举, plus secondary module if applicable.
-5. `计划调整`: split, exercises or movement patterns, sets, reps, load/RPE/RIR, rest, frequency, and order.
-6. `动作匹配`: say which exercises were exact library matches, alias matches, substitutions, ambiguous, or outside-library.
-7. `进阶规则`: how to add reps, load, sets, density, or difficulty.
-8. `观察指标`: performance, fatigue, soreness, sleep, bodyweight, measurements, or adherence signals to monitor.
-9. `需要补充`: only the missing inputs that materially affect the next decision.
+Use this structure unless the user asks for another format:
 
-Keep advice actionable and bounded. Prefer ranges and decision rules over rigid promises. Do not claim medical certainty or guaranteed body composition outcomes.
+1. `结论`: one short answer describing what to do now.
+2. `数据状态`: source, date range, record states, extraction confidence, and important unknowns.
+3. `证据与瓶颈`: latest completed same-type comparison, goal, recovery, and the bottleneck (`under-stimulus`, `over-fatigue`, `technique`, `adherence`, `equipment`, `goal mismatch`, or `missing data`).
+4. `本次调整`: what changes and what deliberately stays fixed.
+5. `下一次训练`: exercise, realistic load or RPE/RIR, sets, reps, rest, order, and execution target.
+6. `动作匹配`: `exact`, `alias`, `unique_near_name`, `ambiguous`, `substitution`, or `outside-library` for each non-obvious movement.
+7. `进阶与停止线`: the next threshold, deload/pivot trigger, pain/symptom boundary, and what to track for 2-6 weeks.
+8. `需要补充`: only missing inputs that materially change the next decision.
 
-## Quality checks
+If the request is data management, also report the store path, files changed, counts added/skipped, and whether the operation was read-only or confirmed write-back. If the request is a safety flag, keep the answer safety-first and do not fabricate a training prescription.
 
-Before finalizing:
+## Final quality check
 
-- Confirm the recommendation matches the user's stated goal and available schedule/equipment.
-- Confirm the correct goal module was selected; if goals are mixed, state the primary and secondary goal.
-- Confirm safety screening was considered and no medical diagnosis was made.
-- Confirm weekly volume, frequency, intensity, and progression are internally consistent.
-- Confirm load recommendations obey equipment increments: no machine decimals, no unsupported 2.5 kg machine jumps, no barbell weight below 20 kg, and no inappropriate standing machine lateral raise jump from 35 kg to 40 kg+.
-- Confirm selected exercises come from `data/exercise-library.json` when suitable; if using an outside exercise, state why the built-in library was insufficient.
-- Confirm missing exercise handling did not silently invent a library match. Say whether the exercise was matched, substituted, or temporarily used outside the library.
-- Confirm no exercise was avoided or replaced only because progression was hard to calculate; substitutions must be user-chosen, equipment-driven, or safety-driven.
-- Confirm the answer distinguishes known data from assumptions.
-- Confirm the plan includes concrete next actions for the next workout or week.
-- Confirm the bottleneck was named before changing the plan: under-stimulus, over-fatigue, technique mismatch, adherence, recovery, equipment, goal mismatch, or missing data.
-- Confirm the recommendation uses the smallest useful change; if keeping most of the plan, say what is not changing.
-- Confirm fatigue management exists: deload, volume reduction, exercise swap, or recovery adjustment when needed.
-- Confirm nutrition guidance, if included, supports training decisions and avoids extreme deficits or medical claims.
+Before answering, confirm:
 
-## Examples
-
-Triggering examples:
-
-- `/fitness 我最近训练很乱，我该怎么做？`
-- `这是我四周训练截图，帮我分析哪里卡住了，怎么改增肌计划。`
-- `这是我的初始数据：身高体重、训练年限、每周时间和器械，帮我判断怎么开始。`
-- `这是我最近 6 周训练记录，帮我分析该加量、减量还是 deload。`
-- `这是我的体重和腰围趋势，判断是不是减脂平台。`
-- `增肌到底该二分化、三分化、四分化还是五分化？`
-- `我每周只能练三天，目标减脂塑形，帮我重新排训练。`
-- `我想把卧推深蹲硬拉做成力量举周期，怎么安排？`
-- `用我的动作库给我换一个胸背训练日。`
-- `动作库里没有这个动作怎么办？我想用北欧腿弯举。`
-- `站姿器械侧平举 35kg 做满了，下次能不能直接 40kg？`
-- `这个动作算法不好算，能不能直接换掉？`
-- `帮我设计一个健身算法库，覆盖增肌、减脂塑形、部位专攻和力量举。`
-
-Non-triggering examples:
-
-- `帮我画一个健身房宣传海报。`
-- `100g 鸡胸肉多少热量？`
-- `我胸口痛，帮我诊断是什么病。`
+- The primary and secondary goals are explicit when goals conflict.
+- Completed, planned, skipped, and unknown records were not conflated.
+- The latest same-type completed session was compared before progression.
+- The named bottleneck supports the smallest useful change.
+- The split, frequency, weekly volume, intensity, rest, and progression rule agree with the user's schedule and recovery.
+- Every planned load obeys the equipment constraints and any user-specific increment.
+- Every exercise is matched or labeled as a substitution/outside-library movement.
+- Facts, user corrections, assumptions, and uncertainty are separated.
+- Nutrition advice is training-relevant and does not make medical claims or promise a body-composition outcome.

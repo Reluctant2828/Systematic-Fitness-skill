@@ -1,4 +1,4 @@
 interface:
   display_name: "System Fitness Advisor"
   short_description: "Systematic fitness planning with profile, training, body, and nutrition history"
-  default_prompt: "Use /fitness to save or analyze my profile, workout logs, body metrics, nutrition history, and exercise library, then produce a systematic plan across hypertrophy, fat loss, specialization, or powerlifting."
+  default_prompt: "Use /fitness to analyze my profile, completed/planned/skipped workout logs, body metrics, nutrition history, and exercise library, then produce the smallest evidence-based next change across hypertrophy, fat loss, specialization, or powerlifting. Keep data read-only unless I explicitly confirm a write."

@@ -18,6 +18,7 @@ from typing import Any
 FIELD_ALIASES = {
     "date": ["date", "日期", "训练日期", "day", "workout_date", "created_at"],
     "session": ["session", "训练日", "课程", "workout", "workout_name", "split"],
+    "status": ["status", "state", "状态", "完成状态", "done", "completed", "is_completed", "是否完成", "记录状态"],
     "exercise": ["exercise", "动作", "动作名称", "name", "exercise_name", "movement"],
     "sets": ["sets", "组", "组数", "set_count"],
     "reps": ["reps", "次数", "rep", "重复", "repetitions"],
@@ -48,6 +49,8 @@ class SetRecord:
     hard_set: bool
     assumed_hard: bool
     matched: bool
+    status: str
+    status_inferred: bool
 
 
 @dataclass
@@ -152,6 +155,22 @@ def parse_int(value: Any, default: int = 1) -> int:
 def parse_float(value: Any) -> float | None:
     nums = parse_numbers(value)
     return nums[0] if nums else None
+
+
+def classify_status(value: Any) -> tuple[str, bool]:
+    """Normalize common app/export status values without treating plans as completed."""
+    if value in (None, ""):
+        return "completed", True
+    if isinstance(value, bool):
+        return ("completed" if value else "planned"), False
+    text = norm_key(str(value))
+    if text in {"completed", "complete", "done", "finished", "已完成", "完成", "已做", "true", "yes", "1", "是"}:
+        return "completed", False
+    if text in {"planned", "plan", "scheduled", "计划", "已计划", "待完成", "未完成", "false", "no", "0", "否"}:
+        return "planned", False
+    if text in {"skipped", "skip", "missed", "cancelled", "canceled", "跳过", "未训练", "缺席", "取消"}:
+        return "skipped", False
+    return "unknown", False
 
 
 def iso_week(date_value: datetime | None) -> str:
@@ -350,6 +369,7 @@ def expand_sets(rows: list[dict[str, Any]], library: dict[str, list[dict[str, An
         date_value = parse_date(first_value(row, "date"))
         session = str(first_value(row, "session") or "").strip()
         body_part_input = str(first_value(row, "body_part") or "").strip()
+        status, status_inferred = classify_status(first_value(row, "status"))
         exercise_match = resolve_exercise(exercise_name, library, body_part_input)
         exercise_meta = exercise_match.meta
 
@@ -398,6 +418,8 @@ def expand_sets(rows: list[dict[str, Any]], library: dict[str, list[dict[str, An
                     hard_set=hard_set,
                     assumed_hard=assumed_hard,
                     matched=exercise_match.matched,
+                    status=status,
+                    status_inferred=status_inferred,
                 )
             )
     return records
@@ -410,12 +432,18 @@ def epley_1rm(load: float | None, reps: float | None) -> float | None:
 
 
 def summarize(records: list[SetRecord]) -> dict[str, Any]:
-    dated = [record.date for record in records if record.date]
+    status_counts = {status: sum(1 for record in records if record.status == status) for status in ["completed", "planned", "skipped", "unknown"]}
+    analysis_records = [record for record in records if record.status == "completed"]
+    dated = [record.date for record in analysis_records if record.date]
     summary: dict[str, Any] = {
         "set_count": len(records),
+        "completed_set_count": len(analysis_records),
+        "excluded_set_count": len(records) - len(analysis_records),
+        "status_counts": status_counts,
+        "status_inferred_set_count": sum(1 for record in analysis_records if record.status_inferred),
         "date_start": min(dated).date().isoformat() if dated else None,
         "date_end": max(dated).date().isoformat() if dated else None,
-        "weeks": sorted({record.week for record in records}),
+        "weeks": sorted({record.week for record in analysis_records}),
         "unresolved_exercises": sorted({record.exercise for record in records if not record.matched}),
         "unmatched_exercises": sorted({record.exercise for record in records if record.match_type == "unmatched"}),
     }
@@ -434,7 +462,7 @@ def summarize(records: list[SetRecord]) -> dict[str, Any]:
     summary["exercise_matches"] = sorted(match_rows.values(), key=lambda row: row["exercise"])
 
     weekly: dict[tuple[str, str], dict[str, Any]] = {}
-    for record in records:
+    for record in analysis_records:
         key = (record.week, record.body_part)
         bucket = weekly.setdefault(
             key,
@@ -475,7 +503,7 @@ def summarize(records: list[SetRecord]) -> dict[str, Any]:
     summary["weekly_body_part_summary"] = sorted(weekly_rows, key=lambda row: (row["week"], row["body_part"]))
 
     exercise_buckets: dict[str, list[SetRecord]] = defaultdict(list)
-    for record in records:
+    for record in analysis_records:
         exercise_buckets[record.exercise].append(record)
 
     exercise_rows = []
@@ -508,6 +536,20 @@ def summarize(records: list[SetRecord]) -> dict[str, Any]:
     summary["exercise_summary"] = sorted(exercise_rows, key=lambda row: (row["body_part"], row["exercise"]))
 
     flags = []
+    if status_counts["planned"]:
+        flags.append({"type": "planned_records_excluded", "message": "Planned records were excluded from completed-work trend calculations."})
+    if status_counts["planned"] or status_counts["skipped"] or status_counts["unknown"]:
+        flags.append(
+            {
+                "type": "record_states_present",
+                "completed": status_counts["completed"],
+                "planned": status_counts["planned"],
+                "skipped": status_counts["skipped"],
+                "unknown": status_counts["unknown"],
+            }
+        )
+    if records and not analysis_records:
+        flags.append({"type": "no_completed_records", "message": "No completed records were available for progression analysis."})
     if summary["unresolved_exercises"]:
         flags.append({"type": "unresolved_exercises", "message": "Some exercises need confirmation before treating them as library matches."})
     if summary["unmatched_exercises"]:
@@ -546,6 +588,13 @@ def markdown_table(headers: list[str], rows: list[list[Any]]) -> str:
 def render_markdown(summary: dict[str, Any]) -> str:
     lines = ["# Training Log Summary", ""]
     lines.append(f"- Sets parsed: {summary['set_count']}")
+    lines.append(f"- Completed sets used for trends: {summary['completed_set_count']}")
+    counts = summary["status_counts"]
+    lines.append(
+        f"- Record states: completed={counts['completed']}, planned={counts['planned']}, skipped={counts['skipped']}, unknown={counts['unknown']}"
+    )
+    if summary["status_inferred_set_count"]:
+        lines.append(f"- Completed status inferred from missing status: {summary['status_inferred_set_count']} sets")
     lines.append(f"- Date range: {summary.get('date_start') or 'unknown'} to {summary.get('date_end') or 'unknown'}")
     lines.append(f"- Weeks: {', '.join(summary['weeks']) if summary['weeks'] else 'unknown'}")
     if summary["unresolved_exercises"]:
@@ -616,6 +665,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         lines.append("- No automatic flags.")
     lines.append("")
     lines.append("## Notes")
+    lines.append("- Only completed records drive weekly volume, frequency, progression, and e1RM trends; planned/skipped/unknown records remain excluded.")
     lines.append("- Hard sets are assumed when RPE/RIR is missing.")
     lines.append("- Exercise matching uses exact names, curated aliases, and unique near-name matches; ambiguous candidates stay flagged for review.")
     lines.append("- Volume load is load x reps and is context only; do not treat it as better than technique, RPE/RIR, or target tension.")

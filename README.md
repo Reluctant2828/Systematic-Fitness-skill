@@ -7,13 +7,13 @@
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
   <img src="https://img.shields.io/badge/Agent-Skill-purple.svg" alt="Agent Skill">
   <img src="https://img.shields.io/badge/Fitness-Knowledge_Base-green.svg" alt="Fitness Knowledge Base">
-  <img src="https://img.shields.io/badge/Status-Building-orange.svg" alt="Status">
+  <img src="https://img.shields.io/badge/Status-Maintained-brightgreen.svg" alt="Status">
    <img src="https://img.shields.io/badge/Runtime-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor%20%C2%B7%20OpenClaw%20%C2%B7%20Hermes-d946ef" alt="Runtime">
 </p>
 
 <p align="center">
-  <strong>无论你有任何健身需求 ，都一次性全部满足 <br>
-  你的下一个教练何必是教练</strong>
+  <strong>把训练记录、目标和反馈，转成下一次可执行的训练决策<br>
+  先知道为什么改，再知道下一次怎么练</strong>
 </p>
 
 <p align="center">
@@ -188,8 +188,8 @@ fitness    ❯ 先不要立刻大幅降低热量。
 | 来源 | 支持 | 备注 |
 |---|---|---|
 | 用户手动输入 | ✅ | 身高、体重、目标、训练经验、器械条件 |
-| 训练记录 | ✅ | 支持 Excel、CSV、JSON、Markdown 导入 |
-| 健身 App 数据 | ✅ | 例如训记API key 接入 （最推荐）|
+| 训练记录 | ✅ | 内置脚本处理 CSV/JSON；其他可读导出由 runtime 读取后分析 |
+| 健身 App 数据 | ✅ | 训记读取默认只读；写回必须先展示变更摘要并获得确认 |
 | 体测数据 | ✅ | 体重、围度、体脂、力量表现 |
 | 饮食记录 | ✅ | 热量、蛋白质、饮水、饮食习惯 |
 | 睡眠与恢复 | ✅ | 睡眠时长、疲劳感、酸痛反馈 |
@@ -381,9 +381,6 @@ system-fitness-advisor/
 - 历史数据需要用户授权保存，建议存放在 Skill 文件夹外部。
 
 ---
-
-
-
 
 
 

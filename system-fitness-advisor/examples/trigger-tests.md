@@ -34,8 +34,11 @@ These simulated requests were used to refine the skill's trigger boundaries.
 | 28 | `这里有一个训练日志 CSV，帮我汇总每周各肌群训练量和动作趋势。` | Yes | Runs `scripts/summarize_training_logs.py`, then routes to `training-log-analysis.md`. |
 | 29 | `帮我建立长期用户档案，并把这份训练 CSV 保存进去。` | Yes | Routes to `user-data-management.md` and uses `scripts/manage_user_data.py` when file writes are approved. |
 | 30 | `这是我最近两周饮食记录和体重变化，帮我看减脂是不是吃太少。` | Yes | Routes to `nutrition-log-analysis.md`, `body-metrics-analysis.md`, and fat-loss module. |
+| 31 | `这是训练导出：两条已完成、一条计划、一条跳过，帮我判断下次 PPL 练什么。` | Yes | Keep record states separate; only completed work advances progression and the rolling slot. |
+| 32 | `练完了，自己去看训记服务器记录并更新今天的训练。` | Yes | Read Xunji with a force refresh, verify the completed record, then show a write summary before any write-back. |
+| 33 | `把这份 CSV 导入长期档案，导入前备份原文件。` | Yes | Use `manage_user_data.py --backup`, report target path and added/skipped counts, and preserve raw/status fields. |
 
-Refinement from tests: the description explicitly includes `/fitness`, `$system-fitness-advisor`, training logs/screenshots/files/API data, and the four program domains, while excluding medical diagnosis, nutrition-only lookup, and non-training creative requests. If another installed skill also claims `/fitness`, keep only one active `/fitness` skill or use `$system-fitness-advisor` for explicit routing.
+Refinement from tests: the description explicitly includes `/fitness`, `$system-fitness-advisor`, training logs/screenshots/files/API data, and the four program domains, while excluding medical diagnosis, nutrition-only lookup, and non-training creative requests. Record state is part of the trigger contract: planned and skipped entries must not be treated as completed. If another installed skill also claims `/fitness`, keep only one active `/fitness` skill or use `$system-fitness-advisor` for explicit routing.
 
 ## Final acceptance smoke tests
 
@@ -49,5 +52,6 @@ Run these five requests mentally before installing or merging the skill:
 | D | `我肩中束弱，站姿器械侧平举 35kg 做满了，下次能不能直接 40kg？` | Trigger; `goal-specialization.md`, `specialization-advanced.md`, shared load rules | Reject blind 35kg to 40kg+ jumps; prefer reps, control, density, or target-specific shoulder block. |
 | E | `100g 鸡胸肉多少热量？` | Do not trigger | Treat as nutrition-only lookup unless the user asks for a training decision. |
 | F | `把这份训练记录和饮食记录都导入我的长期档案，然后总结最近一周训练和蛋白质。` | Trigger; `user-data-management.md`, `training-log-analysis.md`, `nutrition-log-analysis.md` | Save or update the user-approved data store, deduplicate imports, then summarize training and nutrition evidence. |
+| G | `这是训练 CSV，里面有 planned、completed、skipped 三种状态。` | Trigger; `training-log-analysis.md`, `recommendation-decision-tree.md` | Exclude planned/skipped rows from completed-work trends and state the counts and confidence. |
 
 Acceptance result after the latest polish: A-D and F should trigger the skill, E should not. Ambiguous exercise names must be reported as `unresolved_exercises` instead of silently forced into a library match.

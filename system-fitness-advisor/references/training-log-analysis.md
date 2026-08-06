@@ -23,9 +23,12 @@ Accepted CSV/JSON field aliases include:
 - Exercise: `exercise`, `动作`, `动作名称`, `name`, `exercise_name`.
 - Sets/reps/load: `sets`, `组数`, `reps`, `次数`, `load`, `weight`, `重量`.
 - Intensity: `rpe`, `RPE`, `rir`, `RIR`.
+- Record state: `status`, `state`, `状态`, `done`, `completed`, `is_completed`. Normalize to `completed`, `planned`, `skipped`, or `unknown`.
 - Optional: `session`, `训练日`, `body_part`, `部位`, `notes`.
 
 Use the script output as a structured summary, not as the final answer. The coaching conclusion still comes from this reference plus the goal module and `recommendation-decision-tree.md`.
+
+Only completed records should drive volume, frequency, progression, and e1RM trends. The script reports `status_counts` and excludes planned, skipped, and unknown sets from those calculations. If a source omits status, the script marks the completed status as inferred; confirm that the export represents completed work before making a progression decision.
 
 Exercise names are matched in this order:
 
@@ -57,6 +60,7 @@ RPE/RIR:
 rest:
 notes:
 pain/fatigue:
+status: completed | planned | skipped | unknown
 ```
 
 If screenshots are uncertain, mark uncertain values instead of treating them as exact.
