@@ -55,6 +55,7 @@ class SetRecord:
     status_inferred: bool
     row_key: str
     invalid_fields: tuple[str, ...] = ()
+    uncertain_fields: tuple[str, ...] = ()
 
 
 @dataclass
@@ -152,6 +153,13 @@ def parse_numbers(value: Any) -> list[float]:
         return [float(match.group(0))] if match else []
     text = re.sub(r"(?<=\d)\s*-\s*(?=\d)", ",", text)
     return [float(match) for match in re.findall(r"-?\d+(?:\.\d+)?", text)]
+
+
+def is_single_range(value: Any) -> bool:
+    if value in (None, ""):
+        return False
+    text = str(value).replace("\u2013", "-").replace("\u2014", "-")
+    return bool(re.fullmatch(r"\s*[-+]?\d+(?:\.\d+)?\s*-\s*[-+]?\d+(?:\.\d+)?\s*", text))
 
 
 def normalize_for_key(value: Any) -> Any:
@@ -440,6 +448,10 @@ def expand_sets(rows: list[dict[str, Any]], library: dict[str, list[dict[str, An
         rir_values = parse_numbers(first_value(row, "rir"))
 
         invalid_fields: list[str] = []
+        uncertain_fields: list[str] = []
+        for field in ("reps", "load", "rpe", "rir"):
+            if is_single_range(first_value(row, field)):
+                uncertain_fields.append(field)
         if load_value is not None and load_value < 0:
             invalid_fields.append("load")
             load_value = None
@@ -495,6 +507,7 @@ def expand_sets(rows: list[dict[str, Any]], library: dict[str, list[dict[str, An
                     status_inferred=status_inferred,
                     row_key=str(row.get("__row_key") or row_fingerprint(row)),
                     invalid_fields=tuple(sorted(set(invalid_fields))),
+                    uncertain_fields=tuple(sorted(set(uncertain_fields))),
                 )
             )
     return records
@@ -506,17 +519,24 @@ def epley_1rm(load: float | None, reps: float | None) -> float | None:
     return load * (1 + reps / 30)
 
 
-def summarize(records: list[SetRecord], duplicate_row_count: int = 0, input_row_count: int | None = None) -> dict[str, Any]:
+def summarize(
+    records: list[SetRecord],
+    duplicate_row_count: int = 0,
+    input_row_count: int | None = None,
+    dropped_row_count: int = 0,
+) -> dict[str, Any]:
     status_counts = {status: sum(1 for record in records if record.status == status) for status in ["completed", "planned", "skipped", "unknown"]}
     status_record_counts = {
         status: len({record.row_key for record in records if record.status == status})
         for status in status_counts
     }
     analysis_records = [record for record in records if record.status == "completed"]
+    trend_records = [record for record in analysis_records if record.date]
     dated = [record.date for record in analysis_records if record.date]
     summary: dict[str, Any] = {
         "input_row_count": input_row_count if input_row_count is not None else len({record.row_key for record in records}),
         "duplicate_row_count": duplicate_row_count,
+        "dropped_row_count": dropped_row_count,
         "record_count": len({record.row_key for record in records}),
         "completed_record_count": status_record_counts["completed"],
         "set_count": len(records),
@@ -527,9 +547,11 @@ def summarize(records: list[SetRecord], duplicate_row_count: int = 0, input_row_
         "status_inferred_set_count": sum(1 for record in records if record.status_inferred),
         "status_inferred_record_count": len({record.row_key for record in records if record.status_inferred}),
         "invalid_field_count": sum(1 for record in records if record.invalid_fields),
+        "uncertain_value_count": sum(1 for record in records if record.uncertain_fields),
+        "undated_completed_set_count": len(analysis_records) - len(trend_records),
         "date_start": min(dated).date().isoformat() if dated else None,
         "date_end": max(dated).date().isoformat() if dated else None,
-        "weeks": sorted({record.week for record in analysis_records}),
+        "weeks": sorted({record.week for record in trend_records}),
         "unresolved_exercises": sorted({record.exercise for record in records if record.match_type.startswith("ambiguous_")}),
         "unmatched_exercises": sorted({record.exercise for record in records if record.match_type == "unmatched"}),
     }
@@ -548,7 +570,7 @@ def summarize(records: list[SetRecord], duplicate_row_count: int = 0, input_row_
     summary["exercise_matches"] = sorted(match_rows.values(), key=lambda row: row["exercise"])
 
     weekly: dict[tuple[str, str], dict[str, Any]] = {}
-    for record in analysis_records:
+    for record in trend_records:
         key = (record.week, record.body_part)
         bucket = weekly.setdefault(
             key,
@@ -589,7 +611,7 @@ def summarize(records: list[SetRecord], duplicate_row_count: int = 0, input_row_
     summary["weekly_body_part_summary"] = sorted(weekly_rows, key=lambda row: (row["week"], row["body_part"]))
 
     exercise_buckets: dict[str, list[SetRecord]] = defaultdict(list)
-    for record in analysis_records:
+    for record in trend_records:
         exercise_buckets[record.exercise].append(record)
 
     exercise_rows = []
@@ -650,6 +672,13 @@ def summarize(records: list[SetRecord], duplicate_row_count: int = 0, input_row_
     if summary["invalid_field_count"]:
         invalid_fields = sorted({field for record in records for field in record.invalid_fields})
         flags.append({"type": "invalid_input_values", "fields": invalid_fields, "records": summary["invalid_field_count"]})
+    if summary["uncertain_value_count"]:
+        uncertain_fields = sorted({field for record in records for field in record.uncertain_fields})
+        flags.append({"type": "range_values_lower_bound", "fields": uncertain_fields, "records": summary["uncertain_value_count"]})
+    if summary["undated_completed_set_count"]:
+        flags.append({"type": "undated_completed_records", "sets": summary["undated_completed_set_count"], "message": "Completed records without dates were excluded from dated trend calculations."})
+    if summary["dropped_row_count"]:
+        flags.append({"type": "dropped_input_rows", "rows": summary["dropped_row_count"], "message": "Input rows without a usable exercise were excluded."})
     for row in summary["exercise_matches"]:
         if row["match_type"].startswith("ambiguous_"):
             flags.append(
@@ -683,7 +712,7 @@ def markdown_table(headers: list[str], rows: list[list[Any]]) -> str:
 
 def render_markdown(summary: dict[str, Any]) -> str:
     lines = ["# Training Log Summary", ""]
-    lines.append(f"- Source rows: {summary['input_row_count']} (unique analyzed rows: {summary['record_count']}; exact duplicates removed: {summary['duplicate_row_count']})")
+    lines.append(f"- Source rows: {summary['input_row_count']} (unique analyzed rows: {summary['record_count']}; exact duplicates removed: {summary['duplicate_row_count']}; dropped: {summary['dropped_row_count']})")
     lines.append(f"- Sets parsed: {summary['set_count']}")
     lines.append(f"- Completed sets used for trends: {summary['completed_set_count']}")
     counts = summary["status_counts"]
@@ -770,6 +799,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
     lines.append("- Hard sets are assumed when RPE/RIR is missing.")
     lines.append("- Exercise matching uses exact names, curated aliases, and unique near-name matches; ambiguous candidates stay flagged for review.")
     lines.append("- Volume load is load x reps and is context only; do not treat it as better than technique, RPE/RIR, or target tension.")
+    lines.append("- A single range such as 8-10 is reported using its lower bound and flagged as uncertain; it is not evidence of two completed sets.")
     return "\n".join(lines)
 
 
@@ -791,7 +821,14 @@ def main() -> int:
     rows, duplicate_row_count = deduplicate_rows(raw_rows)
     library = load_library(args.library)
     records = expand_sets(rows, library, default_status=args.default_status)
-    summary = summarize(records, duplicate_row_count=duplicate_row_count, input_row_count=len(raw_rows))
+    represented_row_keys = {record.row_key for record in records}
+    dropped_row_count = sum(1 for row in rows if str(row.get("__row_key") or row_fingerprint(row)) not in represented_row_keys)
+    summary = summarize(
+        records,
+        duplicate_row_count=duplicate_row_count,
+        input_row_count=len(raw_rows),
+        dropped_row_count=dropped_row_count,
+    )
     output = json.dumps(summary, ensure_ascii=False, indent=2) if args.format == "json" else render_markdown(summary)
 
     if args.output:

@@ -37,7 +37,7 @@ python scripts/manage_user_data.py summary user-data
 python scripts/validate_user_data.py user-data
 ```
 
-The management script uses only the Python standard library, writes through a temporary file, and deduplicates repeated imports with semantic stable entry IDs that ignore source filenames. `--backup` copies the target JSON to a microsecond-timestamped `.bak-*` file only when a write occurs. Invalid dates, numeric values, short/duplicate-header CSVs, and secret-like input fields are rejected before writing. Run `scripts/validate_user_data.py` after an import or manual edit; it is read-only and checks required files, JSON shape, dates, statuses, numeric ranges, duplicate IDs, and secret-like keys.
+The management script uses only the Python standard library, writes through a temporary file, and deduplicates repeated imports with semantic stable entry IDs that ignore source filenames. `--backup` copies the target JSON to a microsecond-timestamped `.bak-*` file only when a write occurs. Use one writer per store at a time; concurrent imports can otherwise race. Invalid dates, numeric values, short/duplicate-header CSVs, and secret-like input fields are rejected before writing. Run `scripts/validate_user_data.py` after an import or manual edit; it is read-only and checks required files, JSON shape, dates, statuses, numeric ranges, duplicate IDs, secret-like keys, and backup files.
 
 If Python execution is unavailable, create or update the JSON files manually using the templates in `templates/user-data/`.
 

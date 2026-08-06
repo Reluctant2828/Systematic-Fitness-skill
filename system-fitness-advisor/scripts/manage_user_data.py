@@ -281,6 +281,8 @@ def validate_record(record: dict[str, Any], kind: str) -> bool:
     if kind == "training":
         if not str(record.get("exercise", "")).strip():
             return False
+        if record.get("status") == "completed" and not record.get("date"):
+            return False
         for field in ("sets", "reps", "load", "rpe", "rir"):
             values = parse_numeric_tokens(record.get(field)) if field in ("sets", "reps") else parse_numeric_tokens(record.get(field))
             if any(value < 0 for value in values):

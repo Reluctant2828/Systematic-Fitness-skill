@@ -77,6 +77,7 @@ def validate_records(records: Any, list_key: str, filename: str, issues: list[st
         else:
             warnings.append(f"{location}: missing _entry_id; imported records may not deduplicate safely")
 
+        date_value = record.get("date")
         if list_key == "training_logs":
             if not str(record.get("exercise", "")).strip():
                 issues.append(f"{location}.exercise: required for training records")
@@ -85,6 +86,8 @@ def validate_records(records: Any, list_key: str, filename: str, issues: list[st
                 issues.append(f"{location}.status: expected one of {sorted(ALLOWED_STATUS)}")
             if "status_inferred" in record and not isinstance(record["status_inferred"], bool):
                 issues.append(f"{location}.status_inferred: expected boolean")
+            if status == "completed" and not date_value:
+                issues.append(f"{location}.date: required for completed training records")
 
             for field in ("sets", "reps", "load", "rpe", "rir"):
                 values = numeric_values(record.get(field))
@@ -95,7 +98,6 @@ def validate_records(records: Any, list_key: str, filename: str, issues: list[st
                 elif field in {"load"} and any(value < 0 for value in values):
                     issues.append(f"{location}.{field}: cannot be negative")
 
-        date_value = record.get("date")
         if date_value:
             if not DATE_RE.match(str(date_value)):
                 issues.append(f"{location}.date: expected YYYY-MM-DD")
@@ -158,6 +160,12 @@ def validate_store(store_dir: Path) -> dict[str, Any]:
         else:
             counts[kind] = validate_records(data.get(list_key), list_key, filename, issues, warnings)
         inspect_secret_keys(data, filename, issues)
+
+    backups = sorted(store_dir.glob("*.bak-*"))
+    for backup in backups:
+        warnings.append(f"{backup.name}: backup file is also inspected; remove stale backups if they contain superseded secrets")
+        data = load_json(backup, issues)
+        inspect_secret_keys(data, backup.name, issues)
 
     return {"valid": not issues, "issues": issues, "warnings": warnings, "counts": counts}
 
